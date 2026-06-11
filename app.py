@@ -211,10 +211,11 @@ if st.session_state.step == 1:
             # Analysis mode selection
             st.subheader("Analysis Mode")
             st.session_state.analysis_mode = st.radio(
-            "Select analysis depth:", ["auto", "comprehensive"],
-            format_func=lambda x: "Auto-detect (classification if target has <=20 unique values, otherwise regression)" if x == "auto"
-            else "Comprehensive (classification + regression + clustering + feature analysis)",
-            horizontal=True)
+                "Select analysis depth:",
+                options=["auto", "comprehensive"],
+                format_func=lambda x: "Auto-detect" if x == "auto" else "Comprehensive",
+                horizontal=True,
+            )
 
             if st.button("Next: Configure Analysis", type="primary", use_container_width=True):
                 st.session_state.step = 2
