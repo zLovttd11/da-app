@@ -184,11 +184,6 @@ if st.session_state.step == 1:
 
         if loaded_files:
             st.session_state.uploaded_files = loaded_files
-            if "loaded_files" not in st.session_state:
-                st.session_state.loaded_files = loaded_files
-            else:
-                st.session_state.loaded_files = loaded_files
-            st.rerun()
 
     # Display loaded files from session state (survives rerenders)
     if st.session_state.get("uploaded_files"):
