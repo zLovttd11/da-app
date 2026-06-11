@@ -63,6 +63,7 @@ st.sidebar.caption("Made for UTS Data Analysis")
 # STEP 1: Upload Data
 # ================================================================
 if st.session_state.step == 1:
+    st.caption(f'[DEBUG] Current step: {st.session_state.step} | df loaded: {st.session_state.df is not None}')
     st.title(" Upload Your Data")
 
     # ---- URL Fetch Section ----
@@ -227,8 +228,8 @@ if st.session_state.step == 1:
 
         if st.button("Next: Configure Analysis", type="primary", use_container_width=True):
             st.session_state.step = 2
+            st.success("Navigating to Configure...")
             st.rerun()
-
 # ================================================================
 # STEP 2: Configure
 # ================================================================
