@@ -166,60 +166,72 @@ if st.session_state.step == 1:
                                        accept_multiple_files=True,
                                        help="Supported: CSV, Excel. You can upload up to 10 files at once.")
 
+    # Store uploaded files in session state to survive rerenders
     if uploaded_files:
         # Limit to 10
         if len(uploaded_files) > 10:
             st.warning("Maximum 10 files allowed. Only the first 10 will be processed.")
             uploaded_files = uploaded_files[:10]
 
-        st.subheader("Uploaded Files ({})".format(len(uploaded_files)))
+        # Load and save to session state
         loaded_files = []
         for i, uf in enumerate(uploaded_files):
-            with st.spinner("Loading {}...".format(uf.name)):
-                try:
-                    df, name = load_data(uf)
-                    loaded_files.append({"index": i, "name": name, "df": df, "shape": df.shape})
-                except Exception as e:
-                    st.error("Failed to load {}: {}".format(uf.name, str(e)))
+            try:
+                df, name = load_data(uf)
+                loaded_files.append({"index": i, "name": name, "df": df, "shape": df.shape})
+            except Exception as e:
+                st.error("Failed to load {}: {}".format(uf.name, str(e)))
 
         if loaded_files:
-            # Let user select which file to analyze
-            file_options = ["{} ({} rows x {} cols)".format(f["name"], f["shape"][0], f["shape"][1])
-                           for f in loaded_files]
-            selected_idx = st.selectbox(
-                "Select file to analyze:", range(len(loaded_files)),
-                format_func=lambda i: file_options[i],
-                key="file_selector"
-            )
-
-            selected = loaded_files[selected_idx]
-            st.session_state.df = selected["df"]
-            st.session_state.dataset_name = selected["name"]
-            st.session_state.col_types = infer_column_types(selected["df"])
-            st.session_state.target_col = None
             st.session_state.uploaded_files = loaded_files
+            if "loaded_files" not in st.session_state:
+                st.session_state.loaded_files = loaded_files
+            else:
+                st.session_state.loaded_files = loaded_files
+            st.rerun()
 
-            st.success("Active: **{}** -- {} rows x {} columns".format(
-                selected["name"], selected["shape"][0], selected["shape"][1]))
-            st.subheader("Data Preview")
-            st.dataframe(selected["df"].head(100), use_container_width=True)
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Rows", selected["shape"][0])
-            col2.metric("Columns", selected["shape"][1])
-            col3.metric("Numeric Cols", len(st.session_state.col_types.get("numeric", [])))
+    # Display loaded files from session state (survives rerenders)
+    if st.session_state.get("uploaded_files"):
+        loaded_files = st.session_state.uploaded_files
+        st.subheader("Uploaded Files ({})".format(len(loaded_files)))
 
-            # Analysis mode selection
-            st.subheader("Analysis Mode")
-            st.session_state.analysis_mode = st.radio(
-                "Select analysis depth:",
-                options=["auto", "comprehensive"],
-                format_func=lambda x: "Auto-detect" if x == "auto" else "Comprehensive",
-                horizontal=True,
-            )
+        file_options = ["{} ({} rows x {} cols)".format(f["name"], f["shape"][0], f["shape"][1])
+                       for f in loaded_files]
+        selected_idx = st.selectbox(
+            "Select file to analyze:", range(len(loaded_files)),
+            format_func=lambda i: file_options[i],
+            key="file_selector",
+            index=min(st.session_state.get("active_file_index", 0), len(loaded_files) - 1)
+        )
 
-            if st.button("Next: Configure Analysis", type="primary", use_container_width=True):
-                st.session_state.step = 2
-                st.rerun()
+        selected = loaded_files[selected_idx]
+        st.session_state.df = selected["df"]
+        st.session_state.dataset_name = selected["name"]
+        st.session_state.col_types = infer_column_types(selected["df"])
+        st.session_state.target_col = None
+        st.session_state.active_file_index = selected_idx
+
+        st.success("Active: **{}** -- {} rows x {} columns".format(
+            selected["name"], selected["shape"][0], selected["shape"][1]))
+        st.subheader("Data Preview")
+        st.dataframe(selected["df"].head(100), use_container_width=True)
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Rows", selected["shape"][0])
+        col2.metric("Columns", selected["shape"][1])
+        col3.metric("Numeric Cols", len(st.session_state.col_types.get("numeric", [])))
+
+        # Analysis mode selection
+        st.subheader("Analysis Mode")
+        st.session_state.analysis_mode = st.radio(
+            "Select analysis depth:",
+            options=["auto", "comprehensive"],
+            format_func=lambda x: "Auto-detect" if x == "auto" else "Comprehensive",
+            horizontal=True,
+        )
+
+        if st.button("Next: Configure Analysis", type="primary", use_container_width=True):
+            st.session_state.step = 2
+            st.rerun()
 
 # ================================================================
 # STEP 2: Configure
