@@ -4,6 +4,7 @@ import urllib.request
 import urllib.error
 import urllib.parse
 from http.cookiejar import CookieJar
+import chardet
 import re
 import os
 import io
@@ -93,19 +94,38 @@ def _make_request(url, timeout=30):
     with opener.open(req, timeout=timeout) as resp:
         content_type = resp.headers.get('Content-Type', '')
         data = resp.read()
-        # Try to detect encoding
-        encoding = 'utf-8'
+
+        # Smart encoding detection with chardet
+        detected = chardet.detect(data)
+        chardet_enc = detected.get('encoding', 'utf-8')
+        confidence = detected.get('confidence', 0)
+
+        # Also check Content-Type header
+        header_enc = None
         for part in content_type.split(';'):
             if 'charset' in part.lower():
-                encoding = part.split('=')[-1].strip()
+                header_enc = part.split('=')[-1].strip().strip('"').strip("'")
                 break
-        if encoding.lower() not in ('utf-8', 'utf8'):
+
+        # Priority: high-confidence chardet > header charset > utf-8
+        candidates = []
+        if chardet_enc and confidence > 0.7:
+            candidates.append(chardet_enc)
+        if header_enc:
+            candidates.append(header_enc)
+        candidates.append('utf-8')
+
+        text = None
+        for enc in candidates:
             try:
-                text = data.decode(encoding)
-            except Exception:
-                text = data.decode('utf-8', errors='replace')
-        else:
+                text = data.decode(enc)
+                break
+            except (UnicodeDecodeError, LookupError):
+                continue
+
+        if text is None:
             text = data.decode('utf-8', errors='replace')
+
         return text, content_type, data
 
 
@@ -166,8 +186,10 @@ def fetch_page(url):
         full_url = urllib.parse.urljoin(url, href)
         # Check if it's a data file
         fn_lower = full_url.lower()
-        is_data = any(fn_lower.endswith(ext) for ext in
-                      ['.csv', '.xlsx', '.xls', '.tsv', '.json', '.txt'])
+        # Check if it's a data file (strip query params first)
+        url_path = full_url.split('?')[0].lower()
+        is_data = any(url_path.endswith(ext) for ext in
+                      ['.csv', '.xlsx', '.xls', '.tsv', '.json', '.txt', '.pdf', '.zip'])
         link_info = {'url': full_url, 'is_data': is_data, 'text': href[:100]}
         result['links'].append(link_info)
         if is_data:
@@ -201,7 +223,10 @@ def try_load_as_dataframe(file_bytes, filename):
     import pandas as pd
     import io as io_mod
 
-    fn_lower = filename.lower()
+    fn_lower = filename.split('?')[0].lower()
+    # PDF files are documents, not tabular data
+    if fn_lower.endswith('.pdf'):
+        return None
     try:
         if fn_lower.endswith('.csv') or fn_lower.endswith('.txt') or fn_lower.endswith('.tsv'):
             return pd.read_csv(io_mod.BytesIO(file_bytes))
