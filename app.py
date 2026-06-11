@@ -19,7 +19,7 @@ from modules.classification import classify_compare_models
 from modules.clustering import cluster_analysis
 from modules.feature_engineering import feature_importance_analysis
 from modules.cross_validation import split_data, kfold_cross_validation, stratified_kfold
-from modules.web_fetcher import fetch_page, download_data_file, try_load_as_dataframe
+from modules.web_fetcher import fetch_page, download_data_file, try_load_as_dataframe, set_cookie_header
 from modules.auto_ml import auto_analyze
 from modules.data_preprocessing import auto_preprocess
 from modules.tableau_exporter import export_to_hyper
@@ -77,6 +77,17 @@ if st.session_state.step == 1:
         st.write("")
         st.write("")
         fetch_clicked = st.button("Fetch URL", use_container_width=True, key="fetch_btn")
+
+        with st.expander("Need to access a login-protected page? Add browser cookies"):
+            st.caption("1. Open the page in Chrome (logged in)  2. Press F12 > Application > Cookies  3. Copy the Cookie header value for the site")
+            cookie_input = st.text_input(
+                "Paste Cookie string here:",
+                placeholder="session=abc123; token=xyz789; ...",
+                key="cookie_string"
+            )
+            if cookie_input:
+                set_cookie_header(cookie_input)
+                st.success("Cookie set! Fetch will use your login session.")
 
     if fetch_clicked and fetch_url_input:
         with st.spinner("Fetching webpage content..."):
