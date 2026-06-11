@@ -98,16 +98,33 @@ if st.session_state.step == 1:
                 extracted = page["text"][:3000]
                 st.session_state.problem_statement = extracted
                 st.info("Extracted {:,} characters of text. First section shown below:".format(len(extracted)))
-                with st.expander("View extracted text (first 2000 chars)"):
-                    st.text(extracted[:2000])
+                with st.expander("View extracted text (first 20,000 chars)"):
+                    st.text(extracted[:20000])
 
                 # Show data files found
                 if page["data_files"]:
                     st.subheader("Data Files Found ({})".format(len(page["data_files"])))
                     for i, df_info in enumerate(page["data_files"][:10]):
-                        st.markdown("- [{}]({})".format(df_info["url"][:80], df_info["url"]))
-
-                    st.caption("Click a link above to download, or use the button below to try auto-loading.")
+                        col_a, col_b = st.columns([6, 2])
+                        with col_a:
+                            st.markdown("- `{}`".format(df_info["url"][:120]))
+                        with col_b:
+                            if st.button("Download & Load", key="dl_file_{}".format(i), use_container_width=True):
+                                with st.spinner("Downloading..."):
+                                    raw, fname, err = download_data_file(df_info["url"])
+                                    if raw:
+                                        df = try_load_as_dataframe(raw, fname)
+                                        if df is not None:
+                                            st.session_state.df = df
+                                            st.session_state.dataset_name = fname
+                                            st.session_state.col_types = infer_column_types(df)
+                                            st.session_state.target_col = None
+                                            st.success("Loaded **{}**  {} rows x {} columns!".format(fname, df.shape[0], df.shape[1]))
+                                            st.dataframe(df.head(50), use_container_width=True)
+                                        else:
+                                            st.error("Could not parse as CSV/Excel. File may be a PDF (download via browser).")
+                                    else:
+                                        st.error("Download failed: {}".format(err))
                     if st.button("Auto-download & Load First Data File", use_container_width=True):
                         with st.spinner("Downloading data..."):
                             first = page["data_files"][0]
