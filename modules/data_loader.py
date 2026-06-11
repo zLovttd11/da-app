@@ -48,14 +48,12 @@ def infer_column_types(df: pd.DataFrame) -> dict[str, list[str]]:
     }
 
 
-def _load_hyper(file_bytes: bytes):
+def _load_hyper(file_bytes: bytes) -> pd.DataFrame:
     """Load a .hyper file into a DataFrame using tableauhyperapi."""
     try:
         from tableauhyperapi import HyperProcess, Telemetry, Connection, CreateMode
     except ImportError:
-        raise ImportError("tableauhyperapi is not installed. Install it with: pip install tableauhyperapi") -> pd.DataFrame:
-    """Load a .hyper file into a DataFrame using tableauhyperapi."""
-    from tableauhyperapi import HyperProcess, Telemetry, Connection, CreateMode
+        raise ImportError("tableauhyperapi is not installed. Install it with: pip install tableauhyperapi")
     import tempfile
     import os
 
