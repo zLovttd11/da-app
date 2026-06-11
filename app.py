@@ -38,6 +38,7 @@ DEFAULTS = {
     "corr_result": None, "reg_result": None, "reg_compare_result": None,
     "hyp_result": None, "class_result": None,
     "cluster_result": None, "fi_result": None, "split_result": None,
+    "uploaded_files": [], "active_file_index": 0,
     "problem_statement": "",
     "auto_ml_result": None, "preprocess_log": None,
     "report_path": None, "hyper_path": None, "analysis_done": False,
@@ -161,23 +162,50 @@ if st.session_state.step == 1:
         key="problem_text"
     )
 
-    uploaded = st.file_uploader("Choose a data file", type=["csv", "xlsx", "xls"],
-                                help="Supported: CSV, Excel")
+    uploaded_files = st.file_uploader("Choose data files (up to 10)", type=["csv", "xlsx", "xls"],
+                                       accept_multiple_files=True,
+                                       help="Supported: CSV, Excel. You can upload up to 10 files at once.")
 
-    if uploaded is not None:
-        try:
-            with st.spinner("Loading data..."):
-                df, name = load_data(uploaded)
-                st.session_state.df = df
-                st.session_state.dataset_name = name
-                st.session_state.col_types = infer_column_types(df)
-                st.session_state.target_col = None
-            st.success("Loaded **{}** -- {} rows x {} columns".format(name, df.shape[0], df.shape[1]))
+    if uploaded_files:
+        # Limit to 10
+        if len(uploaded_files) > 10:
+            st.warning("Maximum 10 files allowed. Only the first 10 will be processed.")
+            uploaded_files = uploaded_files[:10]
+
+        st.subheader("Uploaded Files ({})".format(len(uploaded_files)))
+        loaded_files = []
+        for i, uf in enumerate(uploaded_files):
+            with st.spinner("Loading {}...".format(uf.name)):
+                try:
+                    df, name = load_data(uf)
+                    loaded_files.append({"index": i, "name": name, "df": df, "shape": df.shape})
+                except Exception as e:
+                    st.error("Failed to load {}: {}".format(uf.name, str(e)))
+
+        if loaded_files:
+            # Let user select which file to analyze
+            file_options = ["{} ({} rows x {} cols)".format(f["name"], f["shape"][0], f["shape"][1])
+                           for f in loaded_files]
+            selected_idx = st.selectbox(
+                "Select file to analyze:", range(len(loaded_files)),
+                format_func=lambda i: file_options[i],
+                key="file_selector"
+            )
+
+            selected = loaded_files[selected_idx]
+            st.session_state.df = selected["df"]
+            st.session_state.dataset_name = selected["name"]
+            st.session_state.col_types = infer_column_types(selected["df"])
+            st.session_state.target_col = None
+            st.session_state.uploaded_files = loaded_files
+
+            st.success("Active: **{}** -- {} rows x {} columns".format(
+                selected["name"], selected["shape"][0], selected["shape"][1]))
             st.subheader("Data Preview")
-            st.dataframe(df.head(100), use_container_width=True)
+            st.dataframe(selected["df"].head(100), use_container_width=True)
             col1, col2, col3 = st.columns(3)
-            col1.metric("Rows", df.shape[0])
-            col2.metric("Columns", df.shape[1])
+            col1.metric("Rows", selected["shape"][0])
+            col2.metric("Columns", selected["shape"][1])
             col3.metric("Numeric Cols", len(st.session_state.col_types.get("numeric", [])))
 
             # Analysis mode selection
@@ -191,8 +219,6 @@ if st.session_state.step == 1:
             if st.button("Next: Configure Analysis", type="primary", use_container_width=True):
                 st.session_state.step = 2
                 st.rerun()
-        except Exception as e:
-            st.error("Failed to load file: {}".format(e))
 
 # ================================================================
 # STEP 2: Configure
@@ -679,4 +705,5 @@ elif st.session_state.step == 4:
 st.sidebar.divider()
 if st.session_state.df is not None:
     st.sidebar.caption(" {}".format(st.session_state.dataset_name))
-    st.sidebar.caption(" {}x{}".format(st.session_state.df.shape[0], st.session_state.df.shape[1]))
+    st.sidebar.caption(" {} files loaded".format(len(st.session_state.get("uploaded_files", []))))
+    st.sidebar.caption(" Active: {} x{}".format(st.session_state.dataset_name, st.session_state.df.shape[0], st.session_state.df.shape[1]))
