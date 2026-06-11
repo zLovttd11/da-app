@@ -447,3 +447,83 @@ def generate_report(
     out_path = OUTPUT_DIR / "report_{}_{}.docx".format(safe_name, timestamp)
     doc.save(str(out_path))
     return str(out_path)
+
+# ===== Added in v3: Method Development chapter =====
+
+def _add_method_development(doc, auto_ml_result, preprocess_log):
+    """Add the Method Development chapter to the report."""
+    from docx.shared import Pt, RGBColor, Inches
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    _make_heading(doc, "Method Development", level=1)
+
+    if auto_ml_result and auto_ml_result.get("success"):
+        _make_para(doc, auto_ml_result.get("narrative", ""), size=10)
+
+        # Model comparison table
+        metrics = auto_ml_result.get("metrics", [])
+        if metrics:
+            _make_heading(doc, "Model Performance Comparison", level=2)
+            import pandas as pd
+            comp_df = pd.DataFrame(metrics)
+            if not comp_df.empty:
+                _add_dataframe_table(doc, comp_df)
+
+        # Charts
+        for key, b64 in auto_ml_result.get("charts", {}).items():
+            if b64:
+                import base64
+                _add_image_from_bytes(doc, base64.b64decode(b64), 5.0)
+
+        _make_para(doc, f"Best model: {auto_ml_result.get('best_model', 'N/A')} "
+                   f"(score: {auto_ml_result.get('best_score', 0):.4f}). "
+                   f"Analysis completed in {auto_ml_result.get('elapsed_seconds', 0):.1f} seconds.", bold=True, size=10)
+
+    # Preprocessing log
+    if preprocess_log:
+        _make_heading(doc, "Data Preprocessing Decisions", level=2)
+        for entry in preprocess_log:
+            phase = entry.get("phase", "")
+            action = entry.get("action", "")
+            result = entry.get("result", "")
+            chosen = entry.get("chosen", "")
+            strategies = entry.get("strategies_tested", [])
+
+            _make_para(doc, f"[{phase}] {action.upper()}", bold=True, size=9)
+            if chosen:
+                _make_para(doc, f"  Chosen: {chosen}", size=8)
+            _make_para(doc, f"  {result}", size=8)
+
+            if strategies:
+                for s in strategies:
+                    name = s.get("name", "unknown")
+                    if "error" in s:
+                        _make_para(doc, f"    - {name}: FAILED ({s['error']})", size=8)
+                    else:
+                        details = ", ".join(f"{k}={v}" for k, v in s.items() if k != "name")
+                        _make_para(doc, f"    - {name}: {details}", size=8)
+        doc.add_page_break()
+
+    # Limitations
+    _make_heading(doc, "Limitations & Future Work", level=1)
+    limitations = [
+        "All models were evaluated on a single train/test split. Cross-validation provides stability estimates but does not guarantee out-of-sample performance on new data distributions.",
+        "The auto-ML pipeline selects the best model based on the chosen metric (F1 for classification, R-squared for regression). Other metrics may suggest different optimal models.",
+        "Hyperparameter tuning was limited to default values. Grid search or Bayesian optimization could further improve performance.",
+        "Feature engineering was limited to basic encoding. Domain-specific feature transformations could unlock additional predictive power.",
+        "The ensemble strategy combined top-3 models via voting. More sophisticated stacking with meta-learners may yield better results.",
+    ]
+    for i, lim in enumerate(limitations):
+        _make_para(doc, f"{i+1}. {lim}", size=9)
+
+    # Future work
+    _make_heading(doc, "Future Work", level=2)
+    future_items = [
+        "Implement automated hyperparameter tuning via Bayesian optimization (Optuna or Hyperopt).",
+        "Add feature engineering pipeline: polynomial interactions, target encoding, dimensionality reduction (PCA, t-SNE).",
+        "Integrate deep learning models (MLP, TabNet) for large datasets where traditional ML may underfit.",
+        "Add model interpretability via SHAP values and LIME explanations.",
+        "Implement automated bias detection and fairness metrics for classification tasks.",
+    ]
+    for item in future_items:
+        _make_para(doc, f"- {item}", size=9)
