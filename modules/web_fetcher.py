@@ -19,6 +19,28 @@ except ImportError:
 
 
 _COOKIE_JAR = CookieJar()
+
+
+def set_custom_cookies(cookie_string):
+    """Accept a raw cookie string (from browser DevTools) and add to the cookie jar."""
+    import http.cookiejar
+    for cookie in cookie_string.split(";"):
+        cookie = cookie.strip()
+        if "=" in cookie:
+            name, value = cookie.split("=", 1)
+    # Actually, use a simpler approach: set Cookie header directly
+    global _CUSTOM_COOKIES
+    _CUSTOM_COOKIES = cookie_string
+
+
+_CUSTOM_COOKIES = ""
+
+
+def set_cookie_header(cookie_string):
+    """Set a custom Cookie header to use for all subsequent requests."""
+    global _CUSTOM_COOKIES
+    _CUSTOM_COOKIES = cookie_string.strip()
+
 _COOKIE_OPENER = None
 
 
@@ -81,6 +103,8 @@ def _make_request(url, timeout=30):
         "Accept-Language": "en-US,en;q=0.9",
         "Connection": "keep-alive",
     }
+    if _CUSTOM_COOKIES:
+        headers["Cookie"] = _CUSTOM_COOKIES
     req = urllib.request.Request(url, headers=headers)
     opener = _get_opener()
     with opener.open(req, timeout=timeout) as resp:
