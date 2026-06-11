@@ -54,7 +54,8 @@ steps = [(1, " Upload Data"), (2, " Configure"), (3, " Run Analysis"), (4, " Dow
 current_step = st.sidebar.radio("Navigation", options=[s[0] for s in steps],
                                 format_func=lambda x: steps[x - 1][1],
                                 index=st.session_state.step - 1, key="nav_radio")
-st.session_state.step = current_step
+if current_step != st.session_state.step:
+            st.session_state.step = current_step
 st.sidebar.divider()
 st.sidebar.caption("Made for UTS Data Analysis")
 
