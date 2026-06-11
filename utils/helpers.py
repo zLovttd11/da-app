@@ -15,13 +15,7 @@ TEMP_DIR = Path(tempfile.gettempdir()) / "da_app_charts"
 
 def setup_matplotlib_style() -> None:
     """Apply a clean seaborn-inspired matplotlib style with English-safe fonts."""
-    try:
     plt.style.use('ggplot')
-except Exception:
-    try:
-    plt.style.use('ggplot')
-    except Exception:
-        plt.style.use("ggplot")
     plt.rcParams.update({
         "figure.dpi": 150,
         "savefig.dpi": 150,
