@@ -11,3 +11,4 @@ python-docx
 statsmodels
 seaborn>=0.12.0
 chardet
+beautifulsoup4
