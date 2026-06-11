@@ -63,6 +63,16 @@ if st.session_state.step == 1:
     st.title(" Upload Your Data")
     st.markdown("Upload a CSV or Excel file to begin. Supports multi-variable datasets of any size.")
 
+    st.subheader("Assignment / Problem Description")
+    st.caption("Describe what this analysis is for. This shapes the analysis approach and report narrative.")
+    st.session_state.problem_statement = st.text_area(
+        "Enter your assignment requirements or business problem:",
+        value=st.session_state.get("problem_statement", ""),
+        placeholder="e.g. OzMart needs to automatically classify new product categories from vendor photos with minimal labelled data. The goal is to reduce manual labelling time from weeks to hours.",
+        height=150,
+        key="problem_text"
+    )
+
     uploaded = st.file_uploader("Choose a data file", type=["csv", "xlsx", "xls"],
                                 help="Supported: CSV, Excel")
 
@@ -83,16 +93,6 @@ if st.session_state.step == 1:
             col3.metric("Numeric Cols", len(st.session_state.col_types.get("numeric", [])))
 
             # Analysis mode selection
-            st.subheader("Assignment / Problem Description")
-            st.caption("Describe what this analysis is for. This shapes the analysis approach and report narrative.")
-            st.session_state.problem_statement = st.text_area(
-                "Enter your assignment requirements or business problem:",
-                value=st.session_state.get("problem_statement", ""),
-                placeholder="e.g. OzMart needs to automatically classify new product categories from vendor photos with minimal labelled data. The goal is to reduce manual labelling time from weeks to hours.",
-                height=150,
-                key="problem_text"
-            )
-
             st.subheader("Analysis Mode")
             st.session_state.analysis_mode = st.radio(
             "Select analysis depth:", ["auto", "comprehensive"],
