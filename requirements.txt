@@ -8,6 +8,5 @@ scikit-learn
 openpyxl
 python-docx
 statsmodels
-seaborn
+seaborn>=0.12.0
 chardet
-tableauhyperapi
