@@ -1,4 +1,4 @@
-"""Generate a Word (.docx) course report from analysis results."""
+﻿"""Generate a comprehensive Word (.docx) analysis report with executive summary, methodology, findings, and recommendations."""
 
 import os
 import io
@@ -9,30 +9,78 @@ from docx import Document
 from docx.shared import Inches, Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.enum.section import WD_ORIENT
 import pandas as pd
 
 OUTPUT_DIR = Path(__file__).parent.parent / "outputs"
 
 
+def _add_image_from_bytes(doc, png_bytes, width_inches=5.0):
+    if not png_bytes:
+        return
+    try:
+        stream = io.BytesIO(png_bytes)
+        doc.add_picture(stream, width=Inches(width_inches))
+        doc.add_paragraph()
+    except Exception:
+        pass
+
+
+def _add_dataframe_table(doc, pdf, col_widths=None):
+    if pdf.empty:
+        doc.add_paragraph("No data available.")
+        return
+    table = doc.add_table(rows=len(pdf) + 1, cols=len(pdf.columns), style="Light Grid Accent 1")
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    for j, col_name in enumerate(pdf.columns):
+        cell = table.rows[0].cells[j]
+        cell.text = str(col_name)
+        for paragraph in cell.paragraphs:
+            for run in paragraph.runs:
+                run.bold = True
+                run.font.size = Pt(8)
+    for i, (_, row) in enumerate(pdf.iterrows()):
+        for j, val in enumerate(row):
+            cell = table.rows[i + 1].cells[j]
+            if isinstance(val, float):
+                cell.text = "{:.4f}".format(val) if abs(val) < 100 else "{:.2f}".format(val)
+            else:
+                cell.text = str(val)
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.font.size = Pt(8)
+    doc.add_paragraph()
+
+
+def _make_para(doc, text, bold=False, size=10, color=None, alignment=None):
+    p = doc.add_paragraph()
+    run = p.add_run(text)
+    run.bold = bold
+    run.font.size = Pt(size)
+    if color:
+        run.font.color.rgb = color
+    if alignment:
+        p.alignment = alignment
+    return p
+
+
+def _make_heading(doc, text, level=1):
+    h = doc.add_heading(text, level=level)
+    for run in h.runs:
+        run.font.color.rgb = RGBColor(0x1A, 0x1A, 0x2E)
+    return h
+
+
 def generate_report(
-    dataset_name: str,
-    df: pd.DataFrame,
-    col_types: dict,
-    profile: dict,
-    desc_stats: pd.DataFrame,
-    cat_summary: dict[str, pd.DataFrame],
-    static_charts: dict[str, list[bytes]],
-    corr_result: dict,
-    reg_result: dict,
-    hyp_result: dict,
-    target_col: str | None = None,
-) -> str:
-    """Generate the Word report and return the output file path."""
+    dataset_name, df, col_types, profile, desc_stats, cat_summary,
+    static_charts, corr_result, reg_result, hyp_result,
+    class_result=None, cluster_result=None, fi_result=None,
+    reg_compare_result=None, split_result=None, target_col=None,
+    analysis_mode="auto",
+):
+    """Generate the full Word report."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     doc = Document()
 
-    # --- Page setup ---
     for section in doc.sections:
         section.top_margin = Cm(2.5)
         section.bottom_margin = Cm(2.5)
@@ -41,59 +89,9 @@ def generate_report(
 
     style = doc.styles["Normal"]
     style.font.name = "Arial"
-    style.font.size = Pt(11)
-    style.paragraph_format.space_after = Pt(6)
+    style.font.size = Pt(10)
 
-    # --- Helper functions ---
-    def add_heading(text, level=1):
-        h = doc.add_heading(text, level=level)
-        for run in h.runs:
-            run.font.color.rgb = RGBColor(0x1A, 0x1A, 0x2E)
-        return h
-
-    def add_paragraph(text, bold=False, size=None):
-        p = doc.add_paragraph()
-        run = p.add_run(text)
-        run.bold = bold
-        if size:
-            run.font.size = Pt(size)
-        return p
-
-    def add_image_from_bytes(png_bytes, width_inches=5.5):
-        if not png_bytes:
-            return
-        stream = io.BytesIO(png_bytes)
-        doc.add_picture(stream, width=Inches(width_inches))
-        doc.add_paragraph()
-
-    def add_dataframe_table(pdf: pd.DataFrame, col_widths=None):
-        if pdf.empty:
-            add_paragraph("No data available.", size=10)
-            return
-        table = doc.add_table(rows=len(pdf) + 1, cols=len(pdf.columns), style="Light Grid Accent 1")
-        table.alignment = WD_TABLE_ALIGNMENT.CENTER
-        for j, col_name in enumerate(pdf.columns):
-            cell = table.rows[0].cells[j]
-            cell.text = str(col_name)
-            for paragraph in cell.paragraphs:
-                for run in paragraph.runs:
-                    run.bold = True
-                    run.font.size = Pt(9)
-        for i, (_, row) in enumerate(pdf.iterrows()):
-            for j, val in enumerate(row):
-                cell = table.rows[i + 1].cells[j]
-                if isinstance(val, float):
-                    cell.text = f"{val:.4f}" if abs(val) < 1000 else f"{val:.2f}"
-                else:
-                    cell.text = str(val)
-                for paragraph in cell.paragraphs:
-                    for run in paragraph.runs:
-                        run.font.size = Pt(9)
-        doc.add_paragraph()
-
-    # =====================================================================
-    # COVER PAGE
-    # =====================================================================
+    # ===== COVER PAGE =====
     for _ in range(6):
         doc.add_paragraph()
     title = doc.add_paragraph()
@@ -105,40 +103,75 @@ def generate_report(
 
     subtitle = doc.add_paragraph()
     subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = subtitle.add_run(f"Dataset: {dataset_name}")
+    run = subtitle.add_run("Dataset: {}".format(dataset_name))
     run.font.size = Pt(16)
     run.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
 
     date_para = doc.add_paragraph()
     date_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = date_para.add_run(f"Generated: {datetime.now().strftime('%B %d, %Y')}")
+    run = date_para.add_run("Generated: {}".format(datetime.now().strftime("%B %d, %Y")))
     run.font.size = Pt(12)
     run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
 
     tool_para = doc.add_paragraph()
     tool_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = tool_para.add_run("Autonomous Analysis by DA App")
+    run = tool_para.add_run("Autonomous Analysis by DA App v2")
     run.font.size = Pt(10)
     run.font.color.rgb = RGBColor(0xAA, 0xAA, 0xAA)
+    doc.add_page_break()
+
+    # ===== 1. EXECUTIVE SUMMARY =====
+    _make_heading(doc, "1. Executive Summary", level=1)
+    rows, cols = profile.get("shape", (0, 0))
+    n_numeric = len(col_types.get("numeric", []))
+    n_cat = len(col_types.get("categorical", []))
+    missing = profile.get("total_missing_cells", 0)
+    dupes = profile.get("duplicate_rows", 0)
+
+    summary_parts = [
+        'This report presents a comprehensive data analysis of the "{}" dataset, containing {} observations across {} variables ({} numeric, {} categorical).'.format(
+            dataset_name, rows, cols, n_numeric, n_cat),
+    ]
+
+    if reg_result and reg_result.get("success"):
+        summary_parts.append(
+            "Regression analysis identified key predictors of {} with an R-squared of {:.3f}.".format(
+                target_col, reg_result["r_squared"]))
+
+    if class_result and class_result.get("success"):
+        summary_parts.append(
+            "Classification analysis compared {} models; the best performer ({}) achieved an F1 score of {:.3f} across {} classes.".format(
+                len(class_result.get("metrics", [])), class_result.get("best_model", "N/A"),
+                class_result["metrics"][0].get("f1_score", 0) if class_result["metrics"] else 0,
+                class_result.get("n_classes", 2)))
+
+    if hyp_result:
+        summary_parts.append(
+            "{} out of {} hypothesis tests yielded statistically significant results.".format(
+                hyp_result.get("significant_count", 0), hyp_result.get("total_tests", 0)))
+
+    if cluster_result and cluster_result.get("success"):
+        summary_parts.append(
+            "Clustering analysis identified {} distinct segments (silhouette score: {:.3f}).".format(
+                cluster_result["best_k"], max(s["silhouette"] for s in cluster_result["silhouette_scores"])))
+
+    summary_parts.append(
+        "The dataset contains {} missing values and {} duplicate rows. Key findings and recommendations are detailed in the sections below.".format(
+            missing, dupes))
+
+    for part in summary_parts:
+        _make_para(doc, part, size=10)
 
     doc.add_page_break()
 
-    # =====================================================================
-    # 1. DATA OVERVIEW
-    # =====================================================================
-    add_heading("1. Data Overview", level=1)
-    rows, cols = profile.get("shape", (0, 0))
-    add_paragraph(f"This report analyzes the dataset \"{dataset_name}\", which contains {rows} observations and {cols} variables.")
+    # ===== 2. DATA OVERVIEW =====
+    _make_heading(doc, "2. Data Overview", level=1)
+    _make_heading(doc, "2.1 Dataset Summary", level=2)
 
-    add_heading("1.1 Dataset Summary", level=2)
-    summary_data = [
-        ("Observations", str(rows)),
-        ("Variables", str(cols)),
-        ("Missing Cells", str(profile.get("total_missing_cells", 0))),
-        ("Duplicate Rows", str(profile.get("duplicate_rows", 0))),
-        ("Memory Usage", str(profile.get("memory_usage", "N/A"))),
-        ("Target Variable", target_col if target_col else "None selected"),
-    ]
+    summary_data = [("Observations", str(rows)), ("Variables", str(cols)),
+                    ("Missing Cells", str(missing)), ("Duplicate Rows", str(dupes)),
+                    ("Memory Usage", str(profile.get("memory_usage", "N/A"))),
+                    ("Target Variable", target_col if target_col else "None")]
     table = doc.add_table(rows=len(summary_data), cols=2, style="Light Grid Accent 1")
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     for i, (k, v) in enumerate(summary_data):
@@ -147,195 +180,270 @@ def generate_report(
         for cell in table.rows[i].cells:
             for paragraph in cell.paragraphs:
                 for run in paragraph.runs:
-                    run.font.size = Pt(10)
+                    run.font.size = Pt(9)
     doc.add_paragraph()
 
-    add_heading("1.2 Column Types", level=2)
-    type_data = [
-        ("Numeric", len(col_types.get("numeric", []))),
-        ("Categorical", len(col_types.get("categorical", []))),
-        ("Datetime", len(col_types.get("datetime", []))),
-        ("Text / Other", len(col_types.get("text", []))),
-    ]
+    _make_heading(doc, "2.2 Column Types", level=2)
+    type_data = [("Numeric", str(n_numeric)), ("Categorical", str(n_cat)),
+                 ("Datetime", str(len(col_types.get("datetime", [])))),
+                 ("Text/Other", str(len(col_types.get("text", []))))]
     table = doc.add_table(rows=len(type_data) + 1, cols=2, style="Light Grid Accent 1")
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.rows[0].cells[0].text = "Type"
     table.rows[0].cells[1].text = "Count"
     for i, (k, v) in enumerate(type_data):
         table.rows[i + 1].cells[0].text = k
-        table.rows[i + 1].cells[1].text = str(v)
+        table.rows[i + 1].cells[1].text = v
     doc.add_paragraph()
 
-    add_heading("1.3 Missing Values", level=2)
-    missing = profile.get("missing", {})
-    if missing:
-        miss_df = pd.DataFrame([
-            {"Variable": col, "Missing Count": info["count"], "Missing %": f"{info['percent']}%"}
-            for col, info in missing.items() if info["count"] > 0
-        ])
+    _make_heading(doc, "2.3 Data Quality", level=2)
+    missing_info = profile.get("missing", {})
+    if missing_info:
+        miss_df = pd.DataFrame([{"Variable": c, "Missing Count": info["count"],
+                                  "Missing %": "{}%".format(info["percent"])}
+                                 for c, info in missing_info.items() if info["count"] > 0])
         if not miss_df.empty:
-            add_dataframe_table(miss_df)
+            _add_dataframe_table(doc, miss_df)
         else:
-            add_paragraph("No missing values detected in the dataset.", size=10)
+            _make_para(doc, "No missing values detected.", size=10)
     doc.add_page_break()
 
-    # =====================================================================
-    # 2. DESCRIPTIVE STATISTICS
-    # =====================================================================
-    add_heading("2. Descriptive Statistics", level=1)
-    add_paragraph("The following tables summarize the central tendency, dispersion, and shape of numeric variables.")
+    # ===== 3. METHODOLOGY =====
+    _make_heading(doc, "3. Methodology", level=1)
+    _make_para(doc, "The analysis follows the CRISP-DM framework and proceeds through multiple phases, "
+               "building from descriptive exploration to predictive modeling and clustering.", size=10)
 
+    phases = [
+        ("Phase 1: Descriptive Exploration", "Summary statistics, distribution analysis, and data profiling."),
+        ("Phase 2: Correlation Analysis", "Pearson correlation matrix and pairwise relationships."),
+        ("Phase 3: Regression Modeling",
+         "OLS linear regression with residual diagnostics and multi-model comparison."),
+        ("Phase 4: Classification Analysis",
+         "Multi-model comparison (Logistic Regression, Random Forest, Gradient Boosting) with cross-validation."),
+        ("Phase 5: Hypothesis Testing",
+         "Independent t-tests, one-way ANOVA, and chi-square tests with effect sizes."),
+        ("Phase 6: Feature Engineering",
+         "Random Forest importance and mutual information to identify key predictors."),
+        ("Phase 7: Clustering",
+         "K-means clustering with silhouette analysis and PCA visualization."),
+    ]
+    for title, desc in phases:
+        _make_para(doc, title, bold=True, size=10)
+        _make_para(doc, desc, size=9)
+
+    doc.add_page_break()
+
+    # ===== 4. DESCRIPTIVE ANALYSIS =====
+    _make_heading(doc, "4. Descriptive Analysis", level=1)
     if not desc_stats.empty:
-        add_heading("2.1 Numeric Variables", level=2)
-        add_dataframe_table(desc_stats)
-
+        _make_heading(doc, "4.1 Numeric Variables", level=2)
+        _add_dataframe_table(doc, desc_stats)
     if cat_summary:
-        add_heading("2.2 Categorical Variables", level=2)
+        _make_heading(doc, "4.2 Categorical Variables", level=2)
         for col, freq_df in cat_summary.items():
-            add_paragraph(f"Frequency table for '{col}':", bold=True, size=10)
-            add_dataframe_table(freq_df)
-
+            _make_para(doc, "Distribution of '{}':".format(col), bold=True, size=10)
+            _add_dataframe_table(doc, freq_df.head(15))
     doc.add_page_break()
 
-    # =====================================================================
-    # 3. VISUALIZATIONS
-    # =====================================================================
-    add_heading("3. Data Visualizations", level=1)
-
-    if static_charts.get("histograms"):
-        add_heading("3.1 Distribution Histograms", level=2)
-        for i, png in enumerate(static_charts["histograms"]):
-            add_image_from_bytes(png, width_inches=5.0)
-
-    if static_charts.get("boxplot"):
-        add_heading("3.2 Box Plot Comparison", level=2)
-        for png in static_charts["boxplot"]:
-            add_image_from_bytes(png, width_inches=5.5)
-
-    if static_charts.get("barcharts"):
-        add_heading("3.3 Categorical Bar Charts", level=2)
-        for png in static_charts["barcharts"]:
-            add_image_from_bytes(png, width_inches=5.0)
-
+    # ===== 5. VISUALIZATIONS =====
+    _make_heading(doc, "5. Data Visualizations", level=1)
+    chart_sections = [
+        ("5.1 Distribution Histograms", "histograms"),
+        ("5.2 Box Plot Comparison", "boxplot"),
+        ("5.3 Categorical Bar Charts", "barcharts"),
+    ]
+    for title, key in chart_sections:
+        if static_charts.get(key):
+            _make_heading(doc, title, level=2)
+            for png in static_charts[key]:
+                _add_image_from_bytes(doc, png, 5.0)
     doc.add_page_break()
 
-    # =====================================================================
-    # 4. CORRELATION ANALYSIS
-    # =====================================================================
-    add_heading("4. Correlation Analysis", level=1)
+    # ===== 6. CORRELATION =====
+    _make_heading(doc, "6. Correlation Analysis", level=1)
+    _make_para(doc, "Method: {} correlation.".format(corr_result.get("method", "pearson").capitalize()), size=10)
+    _make_para(doc, corr_result.get("summary", ""), size=9)
     corr_df = corr_result.get("matrix", pd.DataFrame())
-    add_paragraph(f"Method: {corr_result.get('method', 'pearson').capitalize()} correlation.")
-    add_paragraph(corr_result.get("summary", ""), size=10)
-
     if not corr_df.empty:
-        add_heading("4.1 Correlation Matrix", level=2)
-        display_df = corr_df.round(3).reset_index()
-        display_df.rename(columns={"index": "Variable"}, inplace=True)
-        add_dataframe_table(display_df)
-
+        _make_heading(doc, "6.1 Correlation Matrix", level=2)
+        display = corr_df.round(3).reset_index()
+        display.rename(columns={"index": "Variable"}, inplace=True)
+        _add_dataframe_table(doc, display)
     if corr_result.get("heatmap_png"):
-        add_heading("4.2 Correlation Heatmap", level=2)
-        add_image_from_bytes(corr_result["heatmap_png"], width_inches=5.5)
-
-    add_paragraph(
-        "The correlation matrix above reveals the pairwise linear relationships "
-        "between numeric variables. Variables with |r| > 0.7 indicate strong "
-        "correlation; 0.3 < |r| < 0.7 indicate moderate correlation; and "
-        "|r| < 0.3 indicate weak or negligible correlation."
-    )
+        _make_heading(doc, "6.2 Correlation Heatmap", level=2)
+        _add_image_from_bytes(doc, corr_result["heatmap_png"], 5.0)
+    _make_para(doc, "Variables with |r| > 0.7 indicate strong correlation; 0.3 < |r| < 0.7 indicate moderate; "
+               "|r| < 0.3 indicate weak or negligible correlation.", size=9)
     doc.add_page_break()
 
-    # =====================================================================
-    # 5. REGRESSION ANALYSIS
-    # =====================================================================
-    add_heading("5. Regression Analysis", level=1)
-    if reg_result.get("success"):
-        add_paragraph(f"Target Variable: {target_col}")
-        add_paragraph(f"R-squared: {reg_result['r_squared']}, Adjusted R-squared: {reg_result['adj_r_squared']}")
-        add_paragraph(f"F-statistic: {reg_result['f_stat']}, p-value: {reg_result['f_pvalue']}")
-
+    # ===== 7. REGRESSION =====
+    _make_heading(doc, "7. Regression Analysis", level=1)
+    if reg_result and reg_result.get("success"):
+        _make_para(doc, "Target Variable: {}".format(target_col))
+        _make_para(doc, "R-squared: {}, Adjusted R-squared: {}".format(
+            reg_result["r_squared"], reg_result["adj_r_squared"]))
+        _make_para(doc, "F-statistic: {}, p-value: {}".format(reg_result["f_stat"], reg_result["f_pvalue"]))
+        _make_heading(doc, "7.1 Coefficient Estimates", level=2)
         if not reg_result.get("coefficients", pd.DataFrame()).empty:
-            add_heading("5.1 Coefficient Estimates", level=2)
-            add_dataframe_table(reg_result["coefficients"])
-
-        add_heading("5.2 Interpretation", level=2)
-        add_paragraph(reg_result.get("interpretation", ""), size=10)
-
+            _add_dataframe_table(doc, reg_result["coefficients"])
+        _make_heading(doc, "7.2 Interpretation", level=2)
+        _make_para(doc, reg_result.get("interpretation", ""), size=9)
         if reg_result.get("residual_plot_png"):
-            add_heading("5.3 Residual Diagnostics", level=2)
-            add_image_from_bytes(reg_result["residual_plot_png"], width_inches=5.5)
-    else:
-        add_paragraph(f"Regression analysis could not be performed: {reg_result.get('error', 'Unknown error')}")
+            _add_image_from_bytes(doc, reg_result["residual_plot_png"], 5.5)
 
+    # Multi-model comparison
+    if reg_compare_result and reg_compare_result.get("success"):
+        _make_heading(doc, "7.3 Multi-Model Comparison", level=2)
+        comp_df = pd.DataFrame(reg_compare_result.get("metrics", []))
+        if not comp_df.empty:
+            _add_dataframe_table(doc, comp_df)
+        _make_para(doc, "Best model: {} (by cross-validated R-squared)".format(
+            reg_compare_result.get("best_model", "N/A")), bold=True, size=10)
+        for key, png in reg_compare_result.get("charts", {}).items():
+            _add_image_from_bytes(doc, png, 5.0)
+    else:
+        _make_para(doc, "Regression could not be performed: {}".format(
+            reg_result.get("error", "Unknown error") if reg_result else "No result"), size=9)
     doc.add_page_break()
 
-    # =====================================================================
-    # 6. HYPOTHESIS TESTING
-    # =====================================================================
-    add_heading("6. Hypothesis Testing", level=1)
-    add_paragraph(hyp_result.get("summary", ""))
-
-    if hyp_result.get("t_tests"):
-        add_heading("6.1 Independent t-Tests", level=2)
-        add_dataframe_table(pd.DataFrame(hyp_result["t_tests"]))
-
-    if hyp_result.get("anovas"):
-        add_heading("6.2 One-way ANOVA", level=2)
-        add_dataframe_table(pd.DataFrame(hyp_result["anovas"]))
-
-    if hyp_result.get("chi_squares"):
-        add_heading("6.3 Chi-Square Tests", level=2)
-        add_dataframe_table(pd.DataFrame(hyp_result["chi_squares"]))
-
+    # ===== 8. CLASSIFICATION =====
+    _make_heading(doc, "8. Classification Analysis", level=1)
+    if class_result and class_result.get("success"):
+        _make_para(doc, "Models evaluated: {} | Classes: {} | Best: {}".format(
+            len(class_result.get("metrics", [])), class_result.get("n_classes", 0),
+            class_result.get("best_model", "N/A")), bold=True, size=10)
+        _make_heading(doc, "8.1 Model Performance Comparison", level=2)
+        comp = pd.DataFrame(class_result.get("metrics", []))
+        if not comp.empty:
+            _add_dataframe_table(doc, comp)
+        for key, b64 in class_result.get("charts", {}).items():
+            if b64:
+                _add_image_from_bytes(doc, base64.b64decode(b64) if isinstance(b64, str) else b64, 5.0)
+    else:
+        _make_para(doc, "Classification not applicable: {}".format(
+            class_result.get("error", "") if class_result else "Target is continuous or no target selected."), size=9)
     doc.add_page_break()
 
-    # =====================================================================
-    # 7. CONCLUSIONS
-    # =====================================================================
-    add_heading("7. Conclusions & Recommendations", level=1)
+    # ===== 9. HYPOTHESIS TESTING =====
+    _make_heading(doc, "9. Hypothesis Testing", level=1)
+    if hyp_result:
+        _make_para(doc, hyp_result.get("summary", ""), size=10)
+        if hyp_result.get("t_tests"):
+            _make_heading(doc, "9.1 Independent t-Tests with Cohen's d", level=2)
+            _add_dataframe_table(doc, pd.DataFrame(hyp_result["t_tests"]))
+        if hyp_result.get("anovas"):
+            _make_heading(doc, "9.2 One-way ANOVA with Eta-squared", level=2)
+            _add_dataframe_table(doc, pd.DataFrame(hyp_result["anovas"]))
+        if hyp_result.get("chi_squares"):
+            _make_heading(doc, "9.3 Chi-Square Tests with Cramer's V", level=2)
+            _add_dataframe_table(doc, pd.DataFrame(hyp_result["chi_squares"]))
+    doc.add_page_break()
 
-    n_numeric = len(col_types.get("numeric", []))
-    n_cat = len(col_types.get("categorical", []))
-
-    if reg_result.get("success"):
-        reg_summary = (f"The regression model for '{target_col}' achieved an R-squared of "
-                       f"{reg_result['r_squared']:.3f}, indicating that the selected predictors "
-                       f"{'significantly' if reg_result.get('f_pvalue', 1) < 0.05 else 'do not significantly'} "
-                       f"explain variation in the target variable.")
+    # ===== 10. FEATURE ENGINEERING =====
+    _make_heading(doc, "10. Feature Importance Analysis", level=1)
+    if fi_result and fi_result.get("success"):
+        methods = fi_result.get("methods", {})
+        if methods.get("random_forest"):
+            _make_heading(doc, "10.1 Random Forest Importance", level=2)
+            _add_dataframe_table(doc, pd.DataFrame(methods["random_forest"]))
+        if methods.get("mutual_information"):
+            _make_heading(doc, "10.2 Mutual Information", level=2)
+            _add_dataframe_table(doc, pd.DataFrame(methods["mutual_information"]))
+        if methods.get("target_correlation"):
+            _make_heading(doc, "10.3 Target Correlation", level=2)
+            _add_dataframe_table(doc, pd.DataFrame(methods["target_correlation"]))
+        for key, b64 in fi_result.get("charts", {}).items():
+            if b64:
+                _add_image_from_bytes(doc, base64.b64decode(b64) if isinstance(b64, str) else b64, 5.0)
     else:
-        reg_summary = "No regression model was fitted (either no target was selected or insufficient data)."
+        _make_para(doc, "Feature importance analysis could not be performed.", size=9)
+    doc.add_page_break()
 
-    top_corrs = corr_result.get("summary", "").split("\n")[1:4]
-    corr_summary = "Key bivariate relationships: " + "; ".join(
-        [line.strip() for line in top_corrs if line.strip()]
-    ) if top_corrs else "No pairwise correlations exceeded the threshold for strong association."
+    # ===== 11. CLUSTERING =====
+    _make_heading(doc, "11. Clustering Analysis", level=1)
+    if cluster_result and cluster_result.get("success"):
+        _make_para(doc, "Method: {} | Optimal clusters: {} | Silhouette: {:.3f} | "
+                   "Davies-Bouldin: {}".format(cluster_result.get("method", "kmeans"),
+                                               cluster_result["best_k"],
+                                               max(s["silhouette"] for s in cluster_result["silhouette_scores"]),
+                                               cluster_result.get("db_score", "N/A")), bold=True, size=10)
+        _make_heading(doc, "11.1 Cluster Profiles", level=2)
+        profiles = pd.DataFrame(cluster_result.get("profiles", []))
+        if not profiles.empty:
+            _add_dataframe_table(doc, profiles)
+        for key, b64 in cluster_result.get("charts", {}).items():
+            if b64:
+                _add_image_from_bytes(doc, base64.b64decode(b64) if isinstance(b64, str) else b64, 5.0)
+    else:
+        _make_para(doc, "Clustering not applicable: {}".format(
+            cluster_result.get("error", "") if cluster_result else "Insufficient data."), size=9)
+    doc.add_page_break()
 
-    sig_hyp = sum(
-        len(hyp_result.get(k, [])) for k in ["t_tests", "anovas", "chi_squares"]
-    )
-    hyp_summary = (f"A total of {sig_hyp} hypothesis tests were conducted. "
-                   f"See Section 6 for detailed results.")
+    # ===== 12. LIMITATIONS & RISKS =====
+    _make_heading(doc, "12. Limitations and Risk Management", level=1)
+    limitations = [
+        ("Data Quality", "Missing values and outliers may bias results.", "Imputation and outlier handling applied where appropriate."),
+        ("Model Scope", "Linear models assume linear relationships.", "Non-linear models (Random Forest, Gradient Boosting) included for comparison."),
+        ("Generalizability", "Results reflect the specific dataset analyzed.", "Cross-validation used to estimate out-of-sample performance."),
+        ("Causality", "Correlation and regression do not establish causation.", "Results should be treated as associations, not causal claims."),
+    ]
+    lim_table = doc.add_table(rows=len(limitations) + 1, cols=3, style="Light Grid Accent 1")
+    lim_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    for j, h in enumerate(["Limitation", "Impact", "Mitigation"]):
+        lim_table.rows[0].cells[j].text = h
+        for p in lim_table.rows[0].cells[j].paragraphs:
+            for r in p.runs:
+                r.bold = True
+                r.font.size = Pt(9)
+    for i, (lim, imp, mit) in enumerate(limitations):
+        for j, val in enumerate([lim, imp, mit]):
+            lim_table.rows[i + 1].cells[j].text = val
+            for p in lim_table.rows[i + 1].cells[j].paragraphs:
+                for r in p.runs:
+                    r.font.size = Pt(8)
+    doc.add_page_break()
 
-    numeric_cols = col_types.get("numeric", [])
-    key_vars = ", ".join(numeric_cols[:5]) if numeric_cols else "the dataset variables"
+    # ===== 13. RECOMMENDATIONS =====
+    _make_heading(doc, "13. Conclusions and Recommendations", level=1)
 
-    add_paragraph(
-        f"This report analyzed the \"{dataset_name}\" dataset containing {rows} observations "
-        f"across {cols} variables ({n_numeric} numeric, {n_cat} categorical)."
-    )
-    add_paragraph(reg_summary)
-    add_paragraph(corr_summary)
-    add_paragraph(hyp_summary)
-    add_paragraph(
-        f"These findings suggest that further investigation into {key_vars} "
-        f"may yield actionable insights for decision-making. Future analyses could "
-        f"explore interaction effects, non-linear transformations, or additional "
-        f"data sources to strengthen the conclusions drawn here."
-    )
+    rec_parts = [
+        "This analysis of the \"{}\" dataset ({:,} observations, {} variables) reveals the following key findings:".format(
+            dataset_name, rows, cols),
+    ]
 
-    # --- Save ---
+    if reg_result and reg_result.get("success"):
+        rec_parts.append(
+            "1. The regression model explains {:.1%} of variance in {}. Significant predictors include those with p < 0.05. "
+            "Further investigation of interaction effects and non-linear transformations may improve model fit.".format(
+                reg_result["r_squared"], target_col))
+
+    if class_result and class_result.get("success") and class_result.get("metrics"):
+        rec_parts.append(
+            "2. {} achieved the best classification performance (F1 = {:.3f}). "
+            "For production deployment, consider the accuracy-speed trade-off between Random Forest and Gradient Boosting.".format(
+                class_result["best_model"], class_result["metrics"][0].get("f1_score", 0)))
+
+    if hyp_result:
+        sig_count = hyp_result.get("significant_count", 0)
+        rec_parts.append(
+            "3. {} statistically significant findings emerged from hypothesis testing. "
+            "These associations warrant deeper investigation through controlled experiments.".format(sig_count))
+
+    if cluster_result and cluster_result.get("success"):
+        rec_parts.append(
+            "4. The data naturally segments into {} clusters. Targeted strategies per segment could improve outcomes -- "
+            "for example, high-value segments may benefit from differentiated treatment.".format(cluster_result["best_k"]))
+
+    rec_parts.append(
+        "5. Recommendation: For future analyses, consider collecting additional data on identified key predictors, "
+        "performing longitudinal analysis to track changes over time, and validating findings on an independent holdout sample.")
+
+    for part in rec_parts:
+        _make_para(doc, part, size=10)
+
+    # ----- Save -----
     safe_name = "".join(c if c.isalnum() or c in "._- " else "_" for c in dataset_name)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_path = OUTPUT_DIR / f"report_{safe_name}_{timestamp}.docx"
+    out_path = OUTPUT_DIR / "report_{}_{}.docx".format(safe_name, timestamp)
     doc.save(str(out_path))
     return str(out_path)
