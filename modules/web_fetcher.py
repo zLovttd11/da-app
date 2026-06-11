@@ -3,6 +3,7 @@
 import urllib.request
 import urllib.error
 import urllib.parse
+from http.cookiejar import CookieJar
 import re
 import os
 import io
@@ -62,15 +63,34 @@ class LinkFinder(HTMLParser):
                     self.links.append(value)
 
 
+# Shared cookie jar for session persistence across requests
+_COOKIE_JAR = CookieJar()
+_COOKIE_OPENER = None
+
+def _get_opener():
+    """Get or create a cookie-aware opener."""
+    global _COOKIE_OPENER
+    if _COOKIE_OPENER is None:
+        _COOKIE_OPENER = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(_COOKIE_JAR)
+        )
+    return _COOKIE_OPENER
+
+
 def _make_request(url, timeout=30):
-    """Make an HTTP request with common headers."""
+    """Make an HTTP request with common headers and cookie support."""
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
                       '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
     }
     req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    opener = _get_opener()
+    with opener.open(req, timeout=timeout) as resp:
         content_type = resp.headers.get('Content-Type', '')
         data = resp.read()
         # Try to detect encoding
