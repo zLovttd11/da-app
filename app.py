@@ -37,6 +37,7 @@ DEFAULTS = {
     "corr_result": None, "reg_result": None, "reg_compare_result": None,
     "hyp_result": None, "class_result": None,
     "cluster_result": None, "fi_result": None, "split_result": None,
+    "problem_statement": "",
     "auto_ml_result": None, "preprocess_log": None,
     "report_path": None, "hyper_path": None, "analysis_done": False,
 }
@@ -82,12 +83,22 @@ if st.session_state.step == 1:
             col3.metric("Numeric Cols", len(st.session_state.col_types.get("numeric", [])))
 
             # Analysis mode selection
+            st.subheader("Assignment / Problem Description")
+            st.caption("Describe what this analysis is for. This shapes the analysis approach and report narrative.")
+            st.session_state.problem_statement = st.text_area(
+                "Enter your assignment requirements or business problem:",
+                value=st.session_state.get("problem_statement", ""),
+                placeholder="e.g. OzMart needs to automatically classify new product categories from vendor photos with minimal labelled data. The goal is to reduce manual labelling time from weeks to hours.",
+                height=150,
+                key="problem_text"
+            )
+
             st.subheader("Analysis Mode")
             st.session_state.analysis_mode = st.radio(
-                "Select analysis depth:", ["auto", "comprehensive"],
-                format_func=lambda x: "Auto-detect (classification if target has <=20 unique values, otherwise regression)" if x == "auto"
-                else "Comprehensive (classification + regression + clustering + feature analysis)",
-                horizontal=True)
+            "Select analysis depth:", ["auto", "comprehensive"],
+            format_func=lambda x: "Auto-detect (classification if target has <=20 unique values, otherwise regression)" if x == "auto"
+            else "Comprehensive (classification + regression + clustering + feature analysis)",
+            horizontal=True)
 
             if st.button("Next: Configure Analysis", type="primary", use_container_width=True):
                 st.session_state.step = 2
@@ -106,7 +117,11 @@ elif st.session_state.step == 2:
         df = st.session_state.df
         col_types = st.session_state.col_types
 
-        st.subheader("Column Overview")
+        if st.session_state.problem_statement:
+            st.subheader("Analysis Context")
+            st.info(st.session_state.problem_statement[:500] + ("..." if len(st.session_state.problem_statement) > 500 else ""))
+
+            st.subheader("Column Overview")
         type_rows = []
         for col in df.columns:
             if col in col_types.get("numeric", []):
@@ -518,6 +533,7 @@ elif st.session_state.step == 4:
                             analysis_mode=st.session_state.analysis_mode,
                         auto_ml_result=st.session_state.auto_ml_result,
                         preprocess_log=st.session_state.preprocess_log,
+                        problem_statement=st.session_state.problem_statement,
                         )
                         st.session_state.report_path = path
                         st.success("Report generated!")
@@ -556,6 +572,7 @@ elif st.session_state.step == 4:
         st.json({"Dataset": st.session_state.dataset_name,
                  "Shape": list(st.session_state.df.shape) if st.session_state.df is not None else None,
                  "Target": st.session_state.target_col,
+                 "Problem": st.session_state.problem_statement[:100] + "..." if len(st.session_state.problem_statement) > 100 else st.session_state.problem_statement,
                  "Mode": st.session_state.analysis_mode,
                  "Numeric Cols": len(st.session_state.col_types.get("numeric", [])),
                  "Categorical Cols": len(st.session_state.col_types.get("categorical", [])),
