@@ -75,7 +75,8 @@ def generate_report(
     static_charts, corr_result, reg_result, hyp_result,
     class_result=None, cluster_result=None, fi_result=None,
     reg_compare_result=None, split_result=None, target_col=None,
-    analysis_mode="auto",
+    analysis_mode="auto", auto_ml_result=None, preprocess_log=None,
+    problem_statement="",
 ):
     """Generate the full Word report."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -104,6 +105,14 @@ def generate_report(
     subtitle = doc.add_paragraph()
     subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = subtitle.add_run("Dataset: {}".format(dataset_name))
+    run.font.size = Pt(16)
+    run.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
+
+    if problem_statement:
+        problem_para = doc.add_paragraph()
+        problem_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        short_problem = problem_statement[:200] + ("..." if len(problem_statement) > 200 else "")
+        run = problem_para.add_run(short_problem)
     run.font.size = Pt(16)
     run.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
 
@@ -406,10 +415,13 @@ def generate_report(
     # ===== 13. RECOMMENDATIONS =====
     _make_heading(doc, "13. Conclusions and Recommendations", level=1)
 
-    rec_parts = [
+    rec_parts = []
+    if problem_statement:
+        rec_parts.append("**Problem Addressed:** {}".format(problem_statement[:250]))
+        rec_parts.append("")
+    rec_parts.append(
         "This analysis of the \"{}\" dataset ({:,} observations, {} variables) reveals the following key findings:".format(
-            dataset_name, rows, cols),
-    ]
+            dataset_name, rows, cols))
 
     if reg_result and reg_result.get("success"):
         rec_parts.append(
