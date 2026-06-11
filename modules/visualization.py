@@ -146,3 +146,34 @@ def generate_static_charts(df: pd.DataFrame, col_types: dict,
         plt.close(fig)
 
     return charts
+
+# ====== Enhanced chart types (v2) ======
+
+def generate_classification_charts(class_result):
+    """Generate charts from classification results (metrics + ROC + confusion matrix)."""
+    charts = {}
+    if not class_result.get("success"):
+        return charts
+    for key, b64 in class_result.get("charts", {}).items():
+        charts[key] = b64
+    return charts
+
+
+def generate_clustering_charts(cluster_result):
+    """Generate charts from clustering results (PCA + elbow/silhouette)."""
+    charts = {}
+    if not cluster_result.get("success"):
+        return charts
+    for key, b64 in cluster_result.get("charts", {}).items():
+        charts[key] = b64
+    return charts
+
+
+def generate_feature_importance_chart(fi_result):
+    """Generate chart from feature importance analysis."""
+    charts = {}
+    if not fi_result.get("success"):
+        return charts
+    for key, b64 in fi_result.get("charts", {}).items():
+        charts[key] = b64
+    return charts
