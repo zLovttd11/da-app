@@ -1,0 +1,13 @@
+streamlit>=1.58.0
+pandas
+numpy
+matplotlib
+plotly
+scipy
+scikit-learn
+openpyxl
+python-docx
+statsmodels
+seaborn
+chardet
+tableauhyperapi
