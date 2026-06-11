@@ -138,10 +138,36 @@ def _make_request(url, timeout=30):
 
 DATA_EXTENSIONS = (".csv", ".xlsx", ".xls", ".tsv", ".json", ".txt", ".pdf", ".zip")
 
+# Canvas-specific patterns for file downloads
+CANVAS_FILE_PATTERNS = [
+    "/files/", "/download?download_frd=1", "/download?verifier=",
+    "/preview?", "/api/v1/files/", "/courses/",
+]
 
-def _is_data_url(url):
-    url_path = url.split("?")[0].lower()
-    return any(url_path.endswith(ext) for ext in DATA_EXTENSIONS)
+# Submission-related URL markers to exclude
+SUBMISSION_MARKERS = [
+    "/submissions/", "submission_draft", "submission%2F",
+    "/assignments/", "file_upload", "uploaded_file",
+    "download_frd=1&verifier=",
+]
+
+
+def _is_data_url(url, check_submission=True):
+    url_lower = url.lower()
+    # Exclude submission-related URLs
+    if check_submission:
+        for marker in SUBMISSION_MARKERS:
+            if marker.lower() in url_lower:
+                return False
+    url_path = url_lower.split("?")[0]
+    if any(url_path.endswith(ext) for ext in DATA_EXTENSIONS):
+        return True
+    # Canvas file patterns
+    for pattern in CANVAS_FILE_PATTERNS:
+        if pattern.lower() in url_lower:
+            if "download" in url_lower or "/files/" in url_lower:
+                return True
+    return False
 
 
 def _find_urls_in_html(html, base_url):
