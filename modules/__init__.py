@@ -11,3 +11,5 @@ from .feature_engineering import feature_importance_analysis
 from .cross_validation import split_data, kfold_cross_validation, stratified_kfold
 from .tableau_exporter import export_to_hyper
 from .report_generator import generate_report
+from .auto_ml import auto_analyze
+from .data_preprocessing import auto_preprocess
