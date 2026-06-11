@@ -19,6 +19,7 @@ from modules.classification import classify_compare_models
 from modules.clustering import cluster_analysis
 from modules.feature_engineering import feature_importance_analysis
 from modules.cross_validation import split_data, kfold_cross_validation, stratified_kfold
+from modules.web_fetcher import fetch_page, download_data_file, try_load_as_dataframe
 from modules.auto_ml import auto_analyze
 from modules.data_preprocessing import auto_preprocess
 from modules.tableau_exporter import export_to_hyper
@@ -61,6 +62,65 @@ st.sidebar.caption("Made for UTS Data Analysis")
 # ================================================================
 if st.session_state.step == 1:
     st.title(" Upload Your Data")
+
+    # ---- URL Fetch Section ----
+    st.subheader("Fetch from URL (Optional)")
+    st.caption("Paste an assignment page URL to auto-extract problem description and data files.")
+    url_col1, url_col2 = st.columns([4, 1])
+    with url_col1:
+        fetch_url_input = st.text_input(
+            "Enter URL (e.g., Canvas, Moodle, or direct data link):",
+            placeholder="https://...",
+            key="fetch_url"
+        )
+    with url_col2:
+        st.write("")
+        st.write("")
+        fetch_clicked = st.button("Fetch URL", use_container_width=True, key="fetch_btn")
+
+    if fetch_clicked and fetch_url_input:
+        with st.spinner("Fetching webpage content..."):
+            page = fetch_page(fetch_url_input)
+            if page["success"]:
+                st.success("Page fetched: **{}**".format(page["title"][:100] if page["title"] else "Untitled"))
+                # Set problem statement from extracted text
+                extracted = page["text"][:3000]
+                st.session_state.problem_statement = extracted
+                st.info("Extracted {:,} characters of text. First section shown below:".format(len(extracted)))
+                with st.expander("View extracted text (first 2000 chars)"):
+                    st.text(extracted[:2000])
+
+                # Show data files found
+                if page["data_files"]:
+                    st.subheader("Data Files Found ({})".format(len(page["data_files"])))
+                    for i, df_info in enumerate(page["data_files"][:10]):
+                        st.markdown("- [{}]({})".format(df_info["url"][:80], df_info["url"]))
+
+                    st.caption("Click a link above to download, or use the button below to try auto-loading.")
+                    if st.button("Auto-download & Load First Data File", use_container_width=True):
+                        with st.spinner("Downloading data..."):
+                            first = page["data_files"][0]
+                            raw, fname, err = download_data_file(first["url"])
+                            if raw:
+                                df = try_load_as_dataframe(raw, fname)
+                                if df is not None:
+                                    st.session_state.df = df
+                                    st.session_state.dataset_name = fname
+                                    st.session_state.col_types = infer_column_types(df)
+                                    st.session_state.target_col = None
+                                    st.success("Loaded **{}** -- {} rows x {} columns!".format(fname, df.shape[0], df.shape[1]))
+                                    st.dataframe(df.head(50), use_container_width=True)
+                                else:
+                                    st.error("Could not parse file as CSV/Excel. Try downloading manually.")
+                            else:
+                                st.error("Download failed: {}".format(err))
+                else:
+                    st.info("No data files (.csv/.xlsx) found on the page. You can still upload manually below.")
+            else:
+                st.error("Failed to fetch: {}".format(page.get("error", "Unknown error")))
+
+    st.divider()
+    st.subheader("Or Upload File Directly")
     st.markdown("Upload a CSV or Excel file to begin. Supports multi-variable datasets of any size.")
 
     st.subheader("Assignment / Problem Description")
