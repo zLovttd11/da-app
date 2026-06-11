@@ -19,6 +19,8 @@ from modules.classification import classify_compare_models
 from modules.clustering import cluster_analysis
 from modules.feature_engineering import feature_importance_analysis
 from modules.cross_validation import split_data, kfold_cross_validation, stratified_kfold
+from modules.auto_ml import auto_analyze
+from modules.data_preprocessing import auto_preprocess
 from modules.tableau_exporter import export_to_hyper
 from modules.report_generator import generate_report
 from utils.helpers import setup_matplotlib_style
@@ -35,6 +37,7 @@ DEFAULTS = {
     "corr_result": None, "reg_result": None, "reg_compare_result": None,
     "hyp_result": None, "class_result": None,
     "cluster_result": None, "fi_result": None, "split_result": None,
+    "auto_ml_result": None, "preprocess_log": None,
     "report_path": None, "hyper_path": None, "analysis_done": False,
 }
 for k, v in DEFAULTS.items():
@@ -181,7 +184,7 @@ elif st.session_state.step == 3:
         if st.button(" Start Full Analysis", type="primary", use_container_width=True):
             progress = st.progress(0, text="Starting analysis pipeline...")
             status = st.status("Running analysis...", expanded=True)
-            total_steps = 10
+            total_steps = 11
 
             # 1. Profile
             status.update(label="Step 1/10: Profiling data...")
@@ -230,7 +233,7 @@ elif st.session_state.step == 3:
             time.sleep(0.2)
 
             # 7. Classification
-            status.update(label="Step 7/10: Classification analysis...")
+            status.update(label="Step 7/11: Classification analysis...")
             if target and target in df.columns:
                 t_nunique = df[target].dropna().nunique()
                 if t_nunique <= 20 and t_nunique >= 2:
@@ -243,17 +246,32 @@ elif st.session_state.step == 3:
                                                      "error": "Target has {} unique values -- classification requires 2-20.".format(t_nunique)}
             else:
                 st.session_state.class_result = {"success": False, "error": "No target selected."}
-            progress.progress(7 / total_steps, text="Classification done")
+            progress.progress(7 / 11, text="Classification done")
             time.sleep(0.2)
 
+            # 7.5. Auto-ML Adaptive Analysis
+            status.update(label="Step 7.5/11: Auto-ML adaptive analysis...");
+            if target and target in df.columns:
+                try:
+                    st.session_state.auto_ml_result = auto_analyze(df, target, numeric)
+                    st.session_state.preprocess_log, _ = auto_preprocess(df, target, numeric)
+                except Exception as e:
+                    st.session_state.auto_ml_result = {"success": False, "error": str(e)}
+                    st.session_state.preprocess_log = []
+            else:
+                st.session_state.auto_ml_result = {"success": False, "error": "No target selected."}
+                st.session_state.preprocess_log = []
+            progress.progress(7.5 / 11, text="Auto-ML complete");
+            time.sleep(0.2);
+
             # 8. Hypothesis
-            status.update(label="Step 8/10: Hypothesis testing...")
+            status.update(label="Step 8/11: Hypothesis testing...")
             st.session_state.hyp_result = hypothesis_tests(df, col_types, target)
-            progress.progress(8 / total_steps, text="Hypothesis testing done")
+            progress.progress(8 / 11, text="Hypothesis testing done")
             time.sleep(0.2)
 
             # 9. Feature importance
-            status.update(label="Step 9/10: Feature importance analysis...")
+            status.update(label="Step 9/11: Feature importance analysis...")
             if target and target in numeric:
                 try:
                     st.session_state.fi_result = feature_importance_analysis(df, target, numeric)
@@ -261,11 +279,11 @@ elif st.session_state.step == 3:
                     st.session_state.fi_result = {"success": False, "error": str(e)}
             else:
                 st.session_state.fi_result = {"success": False, "error": "No numeric target."}
-            progress.progress(9 / total_steps, text="Feature importance done")
+            progress.progress(9 / 11, text="Feature importance done")
             time.sleep(0.2)
 
             # 10. Clustering
-            status.update(label="Step 10/10: Clustering analysis...")
+            status.update(label="Step 10/11: Clustering analysis...")
             if len(numeric) >= 2:
                 try:
                     st.session_state.cluster_result = cluster_analysis(df, numeric)
@@ -273,8 +291,9 @@ elif st.session_state.step == 3:
                     st.session_state.cluster_result = {"success": False, "error": str(e)}
             else:
                 st.session_state.cluster_result = {"success": False, "error": "Need at least 2 numeric columns."}
-            progress.progress(1.0, text="All analyses complete! ")
+            progress.progress(10 / 11, text="Clustering done")
 
+            progress.progress(1.0, text="All analyses complete! ");
             status.update(label="Analysis complete!", state="complete")
             st.session_state.analysis_done = True
             st.balloons()
@@ -497,6 +516,8 @@ elif st.session_state.step == 4:
                             reg_compare_result=st.session_state.reg_compare_result,
                             target_col=st.session_state.target_col,
                             analysis_mode=st.session_state.analysis_mode,
+                        auto_ml_result=st.session_state.auto_ml_result,
+                        preprocess_log=st.session_state.preprocess_log,
                         )
                         st.session_state.report_path = path
                         st.success("Report generated!")
@@ -538,7 +559,7 @@ elif st.session_state.step == 4:
                  "Mode": st.session_state.analysis_mode,
                  "Numeric Cols": len(st.session_state.col_types.get("numeric", [])),
                  "Categorical Cols": len(st.session_state.col_types.get("categorical", [])),
-                 "Analyses Run": 10})
+                 "Analyses Run": 11})
         col_a, col_b = st.columns(2)
         with col_a:
             if st.button("Back to Results", use_container_width=True):
